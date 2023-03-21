@@ -1,0 +1,21 @@
+[package]
+name = "qqproxy"
+version = "0.0.1"
+authors = ["jindaxia <jfk_jin@qq.com>"]
+edition = "2021"
+description = "A high performence Socks5 proxy server with bind/reverse support implementation by Rust."
+repository = "https://github.com/jindaxia/qqproxy"
+readme = "README.md"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+simple_logger = "2.1.0"
+log = "0.4.14"
+tokio = { version = "1", features = ["full"] }
+net2 = "0.2"
+
+[profile.release]
+opt-level = 'z'
+lto = true
