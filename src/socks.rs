@@ -142,110 +142,117 @@ async fn tcp_transfer(stream : &mut TcpStream , addr : &Addr, address : &String 
 }
 
 pub async fn socksv5_handle(mut stream: TcpStream) {
-	loop {
-		let mut header = [0u8 ; 2];
-		if let Err(e) = stream.read_exact(&mut header).await{
-			log::error!("error : {}" , e);
-			break;
-		};
-		
-		if header[0] != 5 {
-			log::error!("not support protocol version {}" , header[0]);
-			break;
-		}
+	const AUTH_USERNAME: &str = "synb123";
+	const AUTH_PASSWORD: &str = "qqNBNo.1";
+
+	let mut header = [0u8 ; 2];
+    stream.read_exact(&mut header).await.expect("error reading header");
 	
-		let mut methods = vec![0u8; header[1] as usize].into_boxed_slice();
-		if let Err(e) = stream.read_exact(&mut methods).await{
-			log::error!("error : {}" , e);
-			break;
-		};
-	
-		if !methods.contains(&0u8) {
-			log::error!("just support no auth");
-			break;
-		}
-	
-		if let Err(e) = stream.write_all(&[5, 0]).await{
-			log::error!("error : {}" , e);
-			break;
-		};
-
-		let mut request =  [0u8; 4];
-		if let Err(e) = stream.read_exact(&mut request).await{
-			log::error!("error : {}" , e);
-			break;
-		};
-
-		if request[0] != 5 {
-			log::error!("say again not support version: {}" , request[0]);
-			break;
-		}
-	
-		let cmd = request[1];
-
-		if cmd != 1 {
-			log::error!("not support cmd: {}" , cmd);
-			break;
-		}
-	
-		let addr = match request[3] {
-			0x01 => {
-				let mut ipv4 =  [0u8; 4];
-				if let Err(e) = stream.read_exact(&mut ipv4).await{
-					log::error!("error : {}" , e);
-					break;
-				};
-				Addr::V4(ipv4)
-			},
-			0x04 => {
-				let mut ipv6 =  [0u8; 16];
-				if let Err(e) = stream.read_exact(&mut ipv6).await{
-					log::error!("error : {}" , e);
-					break;
-				};
-				Addr::V6(ipv6)
-			},
-			0x03 => {
-				let mut domain_size =  [0u8; 1];
-				if let Err(e) = stream.read_exact(&mut domain_size).await{
-					log::error!("error : {}" , e);
-					break;
-				};
-				let mut domain =  vec![0u8; domain_size[0] as usize].into_boxed_slice();
-				if let Err(e) = stream.read_exact(&mut domain).await{
-					log::error!("error : {}" , e);
-					break;
-				};
-
-				Addr::Domain(domain)
-			},
-			_ => {
-				log::error!("unknow atyp {}" , request[3]);
-				break;
-			}
-		};
-	
-		let mut port = [0u8 ; 2];
-		if let Err(e) = stream.read_exact(&mut port).await{
-			log::error!("error : {}" , e);
-			break;
-		};
-
-		let port = (port[0] as u16) << 8 | port[1] as u16;
-		let address_prefix = match format_ip_addr(&addr){
-			Err(_) => {
-				break;
-			}
-			Ok(p) => p
-		};
-		let address = format!("{}:{}" , address_prefix , port);
-
-		if cmd == 1 {
-			tcp_transfer(&mut stream , &addr , &address , port).await;
-		}
-		
-
-		log::info!("connection [{}] finished" , address);
-		break;
+	if header[0] != 5 {
+		log::error!("not support protocol version {}", header[0]);
+		return;
 	}
+	
+	let mut methods = vec![0u8; header[1] as usize].into_boxed_slice();
+	stream.read_exact(&mut methods).await.expect("error reading methods");
+	
+	if methods.contains(&2u8){
+		// authentication response
+		stream.write_all(&[5, 2]).await.expect("error writing authentication response");
+
+		let mut auth_request = [0u8; 2];
+		stream.read_exact(&mut auth_request).await.expect("error reading auth request");
+
+		if auth_request[0] != 1 {
+			log::error!("not support auth method: {}", auth_request[0]);
+			return;
+		}
+		let username_len = auth_request[1] as usize;
+		if username_len != AUTH_USERNAME.len() {
+			log::error!("wrong username length: {}", username_len);
+			return;
+		}
+
+		let mut username = vec![0u8; username_len].into_boxed_slice();
+		stream.read_exact(&mut username).await.expect("error reading username");
+		
+		let mut password_len = [0u8; 1];
+		stream.read_exact(&mut password_len).await.expect("error reading password length");
+		if password_len[0] as usize != AUTH_PASSWORD.len() {
+			log::error!("wrong password length: {}", password_len[0]);
+			return;
+		}
+		let mut password = vec![0u8; password_len[0] as usize].into_boxed_slice();
+		stream.read_exact(&mut password).await.expect("error reading password");
+
+		if String::from_utf8_lossy(&username) != AUTH_USERNAME || String::from_utf8_lossy(&password) != AUTH_PASSWORD {
+			// auth failed
+			stream.write_all(&[1, 1]).await.expect("error writing auth failure message");
+			log::error!("auth failed");
+			return;
+		}
+		// auth succeeded
+		stream.write_all(&[1, 0]).await.expect("error writing authentication result");
+	}else{
+		stream.write_all(&[5, 0]).await.expect("error writing authentication result");
+	};
+
+	let mut request =  [0u8; 4];
+	stream.read_exact(&mut request).await.expect("error reading");
+
+	if request[0] != 5 {
+		log::error!("say again not support version: {}" , request[0]);
+		return;
+	}
+
+	let cmd = request[1];
+
+	if cmd != 1 {
+		log::error!("not support cmd: {}" , cmd);
+		return;
+	}
+
+	let addr = match request[3] {
+		0x01 => {
+			let mut ipv4 =  [0u8; 4];
+			stream.read_exact(&mut ipv4).await.expect("error reading ipv4 address");
+			Addr::V4(ipv4)
+		},
+		0x04 => {
+			let mut ipv6 =  [0u8; 16];
+			stream.read_exact(&mut ipv6).await.expect("error reading ipv6 address");
+			Addr::V6(ipv6)
+		},
+		0x03 => {
+			let mut domain_size =  [0u8; 1];
+			stream.read_exact(&mut domain_size).await.expect("error reading domain size");
+			let mut domain =  vec![0u8; domain_size[0] as usize].into_boxed_slice();
+			stream.read_exact(&mut domain).await.expect("error reading domain");
+
+			Addr::Domain(domain)
+		},
+		_ => {
+			log::error!("unknow atyp {}" , request[3]);
+			return;
+		}
+	};
+
+	let mut port = [0u8 ; 2];
+	stream.read_exact(&mut port).await.expect("error reading port");
+
+	let port = (port[0] as u16) << 8 | port[1] as u16;
+	let address_prefix = match format_ip_addr(&addr){
+		Err(_) => {
+			return;
+		}
+		Ok(p) => p
+	};
+	let address = format!("{}:{}" , address_prefix , port);
+
+	if cmd == 1 {
+		tcp_transfer(&mut stream , &addr , &address , port).await;
+	}
+	
+	log::info!("connection [{}] finished" , address);
+
 }
