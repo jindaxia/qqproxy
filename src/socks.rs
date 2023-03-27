@@ -33,7 +33,7 @@ fn format_ip_addr(addr :& Addr) -> Result<String> {
 
 async fn tcp_transfer(stream : &mut TcpStream , addr : &Addr, address : &String , port :u16 ){
 	log::info!("proxy connect to {}" , address);
-	let time_out = Duration::from_millis(150);
+	let time_out = Duration::from_millis(50);
 	let client: std::result::Result<TcpStream, Error>  = match addr{
 		Addr::V4(_) => {
 			timeout(
