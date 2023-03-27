@@ -13,7 +13,7 @@
 
 ## Installation
 
-`$> cargo install rsocx`
+`$> cargo install qqproxy`
 
 
 ## Socks5 Protocol Support
@@ -21,8 +21,10 @@
 - [x] IPV6 Support
 - [ ] `SOCKS5` Authentication Methods
   - [x] `NOAUTH` 
-  - [ ] `USERPASS`
+  - [x] `USERPASS`
 - [ ] `SOCKS5` Commands
   - [x] `CONNECT`
   - [ ] `BIND`
   - [ ] `ASSOCIATE` 
+- [ ] `SOCKS4` Version
+
