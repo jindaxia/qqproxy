@@ -1,7 +1,8 @@
 use std::{ net::{Ipv6Addr, SocketAddrV6}};
 use std::io::*;
+use std::time::Duration;
 use net2::TcpStreamExt;
-use tokio::{net::TcpStream, io::{AsyncWriteExt, AsyncReadExt}};
+use tokio::{net::TcpStream, io::{AsyncWriteExt, AsyncReadExt}, time::{timeout}};
 
 use crate::utils::makeword;
 
@@ -32,10 +33,13 @@ fn format_ip_addr(addr :& Addr) -> Result<String> {
 
 async fn tcp_transfer(stream : &mut TcpStream , addr : &Addr, address : &String , port :u16 ){
 	log::info!("proxy connect to {}" , address);
-	let client  = match addr{
+	let time_out = Duration::from_millis(150);
+	let client: std::result::Result<TcpStream, Error>  = match addr{
 		Addr::V4(_) => {
-			
-			TcpStream::connect(address.clone()).await
+			timeout(
+				time_out,
+				async move { TcpStream::connect(address.clone()).await},
+			).await.expect("connect timeout")
 		},
 		Addr::V6(x) => {
 			let ipv6 = Ipv6Addr::new(
@@ -49,10 +53,16 @@ async fn tcp_transfer(stream : &mut TcpStream , addr : &Addr, address : &String 
 				makeword(x[14] , x[15])
 			);
 			let v6sock = SocketAddrV6::new(ipv6 , port , 0 , 0 );
-			TcpStream::connect(v6sock).await
+			timeout(
+				time_out,
+				async move { TcpStream::connect(v6sock).await},
+			).await.expect("connect timeout")
 		},
 		Addr::Domain(_) => {
-			TcpStream::connect(address.clone()).await
+			timeout(
+				time_out,
+				async move { TcpStream::connect(address.clone()).await},
+			).await.expect("connect timeout")
 		}
 	};
 
